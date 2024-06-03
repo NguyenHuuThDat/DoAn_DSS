@@ -27,6 +27,7 @@ def close_connection(connection):
 
 # Lớp chính cho ứng dụng
 class HealthAdvisorApp(ttk.Window):
+    # hàm khởi tạo
     def __init__(self, connection):
         super().__init__(themename="lumen")
         self.title("Hệ thống tư vấn chăm sóc sức khỏe")
@@ -37,9 +38,10 @@ class HealthAdvisorApp(ttk.Window):
         self.symptom_widgets = []
         self.combo_count = 0
         self.deleted_indices = set()  # Giữ các chỉ số của triệu chứng đã xóa
-        
-        self.create_widgets()
 
+        self.create_widgets()
+        
+    # lấy danh sách triệu chứng
     def get_symptoms(self):
         symptoms = []
         cursor = self.connection.cursor()
@@ -49,6 +51,7 @@ class HealthAdvisorApp(ttk.Window):
             symptoms.append(row[0])
         return symptoms
 
+    # tạo giao diện ban đầu
     def create_widgets(self):
         # Tạo một frame để chứa các nút
         self.button_frame = ttk.Frame(self)
@@ -73,7 +76,7 @@ class HealthAdvisorApp(ttk.Window):
 
         self.add_symptom()  # Thêm triệu chứng đầu tiên
 
-
+    # cập nhật danh sách triệu chứng bệnh
     def update_combos(self, event):
         selected_symptoms = [widget['combo'].get() for widget in self.symptom_widgets]
         for widget in self.symptom_widgets:
@@ -81,6 +84,7 @@ class HealthAdvisorApp(ttk.Window):
             current_value = combo.get()
             combo['values'] = [s for s in self.symptoms if s not in selected_symptoms or s == current_value]
 
+    # thêm triệu chứng
     def add_symptom(self):
         if self.deleted_indices:
             index = min(self.deleted_indices)
@@ -101,15 +105,17 @@ class HealthAdvisorApp(ttk.Window):
         btn_remove.grid(row=row, column=2, padx=10, pady=10)
 
         self.symptom_widgets.append({'index': index, 'label': lbl, 'combo': combo, 'button': btn_remove})
-
+    
+    # xóa triệu chứng
     def remove_symptom(self, index, lbl, combo, btn_remove):
         lbl.grid_forget()
         combo.grid_forget()
         btn_remove.grid_forget()
         self.symptom_widgets = [widget for widget in self.symptom_widgets if widget['index'] != index]
         self.deleted_indices.add(index)
-        self.update_combos(None)
-    
+        self.update_combos(None)   
+        
+    # chẩn đoán bệnh
     def consult_disease(self):
         selected_symptoms = [widget['combo'].get() for widget in self.symptom_widgets]
 
@@ -165,7 +171,6 @@ class HealthAdvisorApp(ttk.Window):
                 disease_info += f"Bệnh: {disease['name']} ({disease['percentage']:.2f}%)\nNguyên nhân: {disease['cause']}\nThuốc: {disease['medicine']}\nLưu ý: {disease['note']}\n\n"
             messagebox.showinfo("Kết quả chẩn đoán", f"Các bệnh có thể mắc phải:\n{disease_info}")
 
-
         # if result:
         #     disease = result[0]
         #     cause = result[1]
@@ -175,8 +180,9 @@ class HealthAdvisorApp(ttk.Window):
         # else:
         #     messagebox.showinfo("Kết quả chẩn đoán", "Không tìm thấy bệnh nào phù hợp với các triệu chứng đã chọn.")
 
+    # danh sách bệnh
     def view_diseases(self):
-        query = "SELECT Ten_benh, Nguyen_nhan, Thuoc_chua, Luu_y FROM Diseases"
+        query = "SELECT Benh_ID, Ten_benh FROM Diseases"
         cursor = self.connection.cursor()
         cursor.execute(query)
         rows = cursor.fetchall()
@@ -185,16 +191,14 @@ class HealthAdvisorApp(ttk.Window):
         new_window.title("Danh sách bệnh")
         new_window.geometry("1000x400")
 
-        tree = ttk.Treeview(new_window, columns=("Ten_benh", "Nguyen_nhan", "Thuoc_chua", "Luu_y"), show='headings', bootstyle=INFO)
+        tree = ttk.Treeview(new_window, columns=("Benh_ID", "Ten_benh"), show='headings', bootstyle=INFO)
+        tree.heading("Benh_ID", text="ID")
         tree.heading("Ten_benh", text="Tên bệnh")
-        tree.heading("Nguyen_nhan", text="Nguyên nhân")
-        tree.heading("Thuoc_chua", text="Thuốc")
-        tree.heading("Luu_y", text="Lưu ý")
 
         # Thêm đường viền cho các cột
         tree.column("#0", width=0, stretch=NO)  # Ẩn cột 0
-        for col, col_name in zip(("Ten_benh", "Nguyen_nhan", "Thuoc_chua", "Luu_y"), ("Tên bệnh", "Nguyên nhân", "Thuốc", "Lưu ý")):
-            tree.column(col, width=200, minwidth=50, anchor="center", stretch=YES)
+        for col, col_name in zip(("Benh_ID", "Ten_benh",), ("ID", "Tên bệnh")):
+            tree.column(col, width=200, minwidth=50, anchor="center")
             tree.heading(col, text=col_name, anchor="center")
 
         # Thêm màu sắc cho hàng
@@ -208,8 +212,32 @@ class HealthAdvisorApp(ttk.Window):
         tree.tag_configure("even", background="#fff")
         tree.tag_configure("odd", background="#f5f5f5")
 
-        tree.pack(expand=True, fill='both')
+        # Ràng buộc sự kiện click vào Treeview
+        tree.bind("<ButtonRelease-1>", lambda event: self.on_tree_select(event, tree))
 
+        tree.pack(padx=10, pady=10, expand=True, fill='both')
+        
+    # nhấn vào tên bệnh để hiển thị thông tin liên quan đến bệnh đó
+    def on_tree_select(self, event, tree):
+        selected_item = tree.selection()[0]
+        item_values = tree.item(selected_item, "values")
+        disease_id = item_values[0]  # Lấy ID của bệnh được chọn
+
+        # Truy vấn cơ sở dữ liệu để lấy thông tin chi tiết của bệnh
+        query = """
+        SELECT Ten_benh, Nguyen_nhan, Thuoc_chua, Luu_y 
+        FROM Diseases
+        WHERE Benh_ID = %s
+        """
+        cursor = self.connection.cursor()
+        cursor.execute(query, (disease_id,))
+        result = cursor.fetchone()
+
+        if result:
+            disease, cause, medicine, note = result
+            messagebox.showinfo("Thông tin bệnh", f"Tên bệnh: {disease}\nNguyên nhân: {cause}\nThuốc: {medicine}\nLưu ý: {note}")
+        else:
+            messagebox.showinfo("Lỗi", "Không tìm thấy thông tin bệnh.")
 
 if __name__ == "__main__":
     connection = create_connection()
